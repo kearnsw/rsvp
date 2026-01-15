@@ -435,22 +435,6 @@ fn render_word_display(f: &mut Frame, app: &App, area: Rect) {
     let pivot_col = inner.width / 2;
     let pivot_y = inner.y + inner.height / 2;
 
-    // Draw the pivot marker (subtle vertical line)
-    let marker_top = Paragraph::new("▼")
-        .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Left);
-    let marker_bottom = Paragraph::new("▲")
-        .style(Style::default().fg(Color::DarkGray))
-        .alignment(Alignment::Left);
-
-    let marker_x = inner.x + pivot_col;
-    if pivot_y > inner.y + 1 {
-        f.render_widget(marker_top, Rect::new(marker_x, pivot_y - 2, 1, 1));
-    }
-    if pivot_y + 2 < inner.y + inner.height {
-        f.render_widget(marker_bottom, Rect::new(marker_x, pivot_y + 1, 1, 1));
-    }
-
     if let Some(word) = app.current_word() {
         let orp = calculate_orp(word);
         let chars: Vec<char> = word.chars().collect();
