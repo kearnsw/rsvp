@@ -23,12 +23,13 @@ use crossterm::{
 use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Color, Modifier, Style, Stylize},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
 use serde::{Deserialize, Serialize};
+use tui_big_text::{BigText, PixelSize};
 use std::{
     collections::hash_map::DefaultHasher,
     fs,
@@ -431,55 +432,96 @@ fn render_word_display(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    // Fixed pivot point - the ORP character always appears here
+    // BigText character dimensions (using HalfHeight pixel size)
+    // Each character is ~8 cells wide and 4 rows tall
+    const CHAR_WIDTH: u16 = 8;
+    const CHAR_HEIGHT: u16 = 4;
+
+    // Fixed pivot point - the ORP character center always appears here
     let pivot_col = inner.width / 2;
-    let pivot_y = inner.y + inner.height / 2;
+    let pivot_y = inner.y + (inner.height.saturating_sub(CHAR_HEIGHT)) / 2;
 
     if let Some(word) = app.current_word() {
         let orp = calculate_orp(word);
         let chars: Vec<char> = word.chars().collect();
 
-        // Build spans for the word with ORP highlighted
-        let mut spans = Vec::new();
-        for (i, ch) in chars.iter().enumerate() {
-            let style = if i == orp {
-                Style::default()
-                    .fg(Color::Red)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD)
-            };
-            spans.push(Span::styled(ch.to_string(), style));
+        // Calculate x position so ORP character center aligns with pivot
+        // ORP char starts at: pivot_col - (orp * CHAR_WIDTH) - (CHAR_WIDTH / 2)
+        let orp_char_center = (orp as u16 * CHAR_WIDTH) + (CHAR_WIDTH / 2);
+        let word_start_x = inner.x + pivot_col.saturating_sub(orp_char_center);
+
+        // Split the word into three parts: before ORP, ORP char, after ORP
+        let before_orp: String = chars[..orp].iter().collect();
+        let orp_char: String = chars[orp].to_string();
+        let after_orp: String = chars[orp + 1..].iter().collect();
+
+        // Store lengths before moving
+        let before_len = before_orp.len() as u16;
+        let after_len = after_orp.len() as u16;
+
+        // Render parts with different colors
+        // Before ORP (white)
+        if before_len > 0 {
+            let before_text = BigText::builder()
+                .pixel_size(PixelSize::HalfHeight)
+                .style(Style::default().fg(Color::White))
+                .lines(vec![before_orp.into()])
+                .build();
+            let before_area = Rect::new(
+                word_start_x,
+                pivot_y,
+                (before_len * CHAR_WIDTH).min(inner.width),
+                CHAR_HEIGHT,
+            );
+            f.render_widget(before_text, before_area);
         }
 
-        // Calculate x position so ORP aligns with pivot
-        // The ORP character should be at pivot_col
-        let word_start_x = inner.x + pivot_col.saturating_sub(orp as u16);
-
-        let display_line = Line::from(spans);
-        let paragraph = Paragraph::new(display_line);
-
-        // Render word at calculated position
-        let word_area = Rect::new(
-            word_start_x,
+        // ORP character (red, bold)
+        let orp_x = word_start_x + (orp as u16 * CHAR_WIDTH);
+        let orp_text = BigText::builder()
+            .pixel_size(PixelSize::HalfHeight)
+            .style(Style::default().fg(Color::Red).bold())
+            .lines(vec![orp_char.into()])
+            .build();
+        let orp_area = Rect::new(
+            orp_x,
             pivot_y,
-            (chars.len() as u16).min(inner.width),
-            1,
+            CHAR_WIDTH.min(inner.width.saturating_sub(orp_x - inner.x)),
+            CHAR_HEIGHT,
         );
-        f.render_widget(paragraph, word_area);
-    } else {
-        let text = Paragraph::new("Ready")
-            .style(
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::ITALIC),
-            )
-            .alignment(Alignment::Center);
+        f.render_widget(orp_text, orp_area);
 
-        let centered = Rect::new(inner.x, pivot_y, inner.width, 1);
-        f.render_widget(text, centered);
+        // After ORP (white)
+        if after_len > 0 {
+            let after_x = word_start_x + ((orp as u16 + 1) * CHAR_WIDTH);
+            let after_text = BigText::builder()
+                .pixel_size(PixelSize::HalfHeight)
+                .style(Style::default().fg(Color::White))
+                .lines(vec![after_orp.into()])
+                .build();
+            let after_area = Rect::new(
+                after_x,
+                pivot_y,
+                (after_len * CHAR_WIDTH).min(inner.width.saturating_sub(after_x - inner.x)),
+                CHAR_HEIGHT,
+            );
+            f.render_widget(after_text, after_area);
+        }
+    } else {
+        // "Ready" message when no word is loaded
+        let text = BigText::builder()
+            .pixel_size(PixelSize::HalfHeight)
+            .style(Style::default().fg(Color::DarkGray))
+            .lines(vec!["Ready".into()])
+            .centered()
+            .build();
+        let text_area = Rect::new(
+            inner.x,
+            pivot_y,
+            inner.width,
+            CHAR_HEIGHT,
+        );
+        f.render_widget(text, text_area);
     }
 }
 
