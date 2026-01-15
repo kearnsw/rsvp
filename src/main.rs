@@ -24,7 +24,7 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span, Text},
+    text::{Line, Span},
     widgets::{Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph},
     Frame, Terminal,
 };
@@ -431,10 +431,31 @@ fn render_word_display(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
+    // Fixed pivot point - the ORP character always appears here
+    let pivot_col = inner.width / 2;
+    let pivot_y = inner.y + inner.height / 2;
+
+    // Draw the pivot marker (subtle vertical line)
+    let marker_top = Paragraph::new("▼")
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Left);
+    let marker_bottom = Paragraph::new("▲")
+        .style(Style::default().fg(Color::DarkGray))
+        .alignment(Alignment::Left);
+
+    let marker_x = inner.x + pivot_col;
+    if pivot_y > inner.y + 1 {
+        f.render_widget(marker_top, Rect::new(marker_x, pivot_y - 2, 1, 1));
+    }
+    if pivot_y + 2 < inner.y + inner.height {
+        f.render_widget(marker_bottom, Rect::new(marker_x, pivot_y + 1, 1, 1));
+    }
+
     if let Some(word) = app.current_word() {
         let orp = calculate_orp(word);
         let chars: Vec<char> = word.chars().collect();
 
+        // Build spans for the word with ORP highlighted
         let mut spans = Vec::new();
         for (i, ch) in chars.iter().enumerate() {
             let style = if i == orp {
@@ -449,21 +470,21 @@ fn render_word_display(f: &mut Frame, app: &App, area: Rect) {
             spans.push(Span::styled(ch.to_string(), style));
         }
 
-        let display_word = Line::from(spans);
+        // Calculate x position so ORP aligns with pivot
+        // The ORP character should be at pivot_col
+        let word_start_x = inner.x + pivot_col.saturating_sub(orp as u16);
 
-        // Create lines with vertical centering
-        let mut lines = Vec::new();
-        let vertical_padding = inner.height.saturating_sub(1) / 2;
-        for _ in 0..vertical_padding {
-            lines.push(Line::from(""));
-        }
-        lines.push(display_word);
+        let display_line = Line::from(spans);
+        let paragraph = Paragraph::new(display_line);
 
-        let paragraph = Paragraph::new(Text::from(lines))
-            .alignment(Alignment::Center)
-            .style(Style::default());
-
-        f.render_widget(paragraph, inner);
+        // Render word at calculated position
+        let word_area = Rect::new(
+            word_start_x,
+            pivot_y,
+            (chars.len() as u16).min(inner.width),
+            1,
+        );
+        f.render_widget(paragraph, word_area);
     } else {
         let text = Paragraph::new("Ready")
             .style(
@@ -473,9 +494,7 @@ fn render_word_display(f: &mut Frame, app: &App, area: Rect) {
             )
             .alignment(Alignment::Center);
 
-        // Center vertically
-        let y = inner.y + inner.height / 2;
-        let centered = Rect::new(inner.x, y, inner.width, 1);
+        let centered = Rect::new(inner.x, pivot_y, inner.width, 1);
         f.render_widget(text, centered);
     }
 }
