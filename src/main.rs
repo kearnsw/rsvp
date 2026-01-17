@@ -300,26 +300,64 @@ impl Application for RSVPApp {
         };
 
         // Word display with ORP highlighting
+        // The ORP character must stay at a fixed center position so eyes don't move
         let word_display: Element<Message> = if let Some(word) = self.words.get(self.word_index) {
             let orp = calculate_orp(word);
             let chars: Vec<char> = word.chars().collect();
+            let font_size = 72;
+            // Approximate character width for monospace-like centering
+            let char_width = font_size as f32 * 0.6;
 
-            let mut word_row = row![];
-
+            // Build left part (before ORP)
+            let mut left_row = row![];
             for (i, ch) in chars.iter().enumerate() {
-                let color = if i == orp {
-                    Color::from_rgb(0.9, 0.2, 0.2) // Red for ORP
-                } else {
-                    Color::from_rgb(0.9, 0.9, 0.9) // White for others
-                };
-
-                word_row = word_row.push(
-                    text(ch.to_string())
-                        .size(72)
-                        .style(color)
-                        .font(Font::DEFAULT),
-                );
+                if i < orp {
+                    left_row = left_row.push(
+                        text(ch.to_string())
+                            .size(font_size)
+                            .style(Color::from_rgb(0.9, 0.9, 0.9))
+                            .font(Font::MONOSPACE),
+                    );
+                }
             }
+
+            // Build ORP character (centered)
+            let orp_char = chars.get(orp).map(|ch| {
+                text(ch.to_string())
+                    .size(font_size)
+                    .style(Color::from_rgb(0.9, 0.2, 0.2))
+                    .font(Font::MONOSPACE)
+            });
+
+            // Build right part (after ORP)
+            let mut right_row = row![];
+            for (i, ch) in chars.iter().enumerate() {
+                if i > orp {
+                    right_row = right_row.push(
+                        text(ch.to_string())
+                            .size(font_size)
+                            .style(Color::from_rgb(0.9, 0.9, 0.9))
+                            .font(Font::MONOSPACE),
+                    );
+                }
+            }
+
+            // Calculate padding to keep ORP centered
+            // Left side needs enough space + its characters, right side balances it
+            let left_chars = orp;
+            let right_chars = chars.len().saturating_sub(orp + 1);
+            let max_chars = left_chars.max(right_chars);
+
+            let left_padding = ((max_chars - left_chars) as f32 * char_width) as u16;
+            let right_padding = ((max_chars - right_chars) as f32 * char_width) as u16;
+
+            let word_row = row![
+                Space::with_width(Length::Fixed(left_padding as f32)),
+                container(left_row).width(Length::Fixed((left_chars as f32 * char_width) as f32)),
+            ]
+            .push(orp_char.unwrap_or_else(|| text("".to_string()).size(font_size).font(Font::MONOSPACE)))
+            .push(container(right_row).width(Length::Fixed((right_chars as f32 * char_width) as f32)))
+            .push(Space::with_width(Length::Fixed(right_padding as f32)));
 
             container(word_row)
                 .width(Length::Fill)

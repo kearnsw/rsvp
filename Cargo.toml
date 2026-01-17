@@ -1,17 +1,38 @@
 [package]
 name = "rsvp"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 description = "RSVP (Rapid Serial Visual Presentation) speed reader"
 license = "MIT"
 readme = "README.md"
 
 [dependencies]
-iced = { version = "0.12", features = ["tokio"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 dirs = "5.0"
-rfd = "0.14"
+
+# GUI dependencies
+iced = { version = "0.12", features = ["tokio"], optional = true }
+rfd = { version = "0.14", optional = true }
+
+# TUI dependencies
+ratatui = { version = "0.28", optional = true }
+crossterm = { version = "0.28", optional = true }
+
+[features]
+default = ["gui"]
+gui = ["dep:iced", "dep:rfd"]
+tui = ["dep:ratatui", "dep:crossterm"]
+
+[[bin]]
+name = "rsvp"
+path = "src/main.rs"
+required-features = ["gui"]
+
+[[bin]]
+name = "rsvp-tui"
+path = "src/bin/rsvp-tui.rs"
+required-features = ["tui"]
 
 [profile.release]
 opt-level = 3
